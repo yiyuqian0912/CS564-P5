@@ -16,21 +16,26 @@ const Status createHeapFile(const string fileName)
     status = db.openFile(fileName, file);
     if (status != OK)
     {
-		// file doesn't exist. First create it and allocate
-		// an empty header page and data page.
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+        status = db.createFile(fileName);
+        status = db.openFile(fileName, file);
+        status = bufMgr->allocPage(file, hdrPageNo, newPage);
+        hdrPage = reinterpret_cast<FileHdrPage*>(newPage);
+        strncpy(hdrPage->fileName, fileName.c_str(), sizeof(hdrPage->fileName));
+        hdrPage->fileName[sizeof(hdrPage->fileName) - 1] = '\0'; 
+        hdrPage->firstPage = -1;     
+        hdrPage->lastPage = -1;
+
+        status = bufMgr->allocPage(file, newPageNo, newPage);
+
+        newPage->init(newPageNo);
+
+        hdrPage->firstPage = newPageNo;
+        hdrPage->lastPage = newPageNo;
+
+        bufMgr->unPinPage(file, hdrPageNo, true);    
+        bufMgr->unPinPage(file, newPageNo, true);  
+
+        return OK;  
     }
     return (FILEEXISTS);
 }
@@ -53,17 +58,22 @@ HeapFile::HeapFile(const string & fileName, Status& returnStatus)
     // open the file and read in the header page and the first data page
     if ((status = db.openFile(fileName, filePtr)) == OK)
     {
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
-		
+	status = filePtr->getFirstPage(headerPageNo);
+        
+        status = bufMgr->readPage(filePtr, headerPageNo, pagePtr);
+
+        headerPage = reinterpret_cast<FileHdrPage*>(pagePtr);
+        hdrDirtyFlag = false;
+
+        curPageNo = headerPage->firstPage;
+
+        status = bufMgr->readPage(filePtr, curPageNo, pagePtr);
+    
+        curPage = pagePtr;
+        curDirtyFlag = false;
+        curRec = NULLRID;
+
+        returnStatus = OK;		
     }
     else
     {
