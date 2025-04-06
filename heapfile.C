@@ -372,6 +372,76 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         // will never fit on a page, so don't even bother looking
         return INVALIDRECLEN;
     }
+	//My Implementation DOWNWARD
+
+    // Inserts the record described by rec into the file returning the RID of the inserted record in outRid.
+    
+     // check if curPage is NULL. If so, make the last page the current page and read it into the buffer.
+    if (curPage == nullptr) {
+        //headerPage->lastPage gives page number of last page
+        //readPage Status
+        status = bufMgr->readPage(filePtr, headerPage->lastPage, curPage);
+        if (status != OK) {
+            return status;
+        }
+        curPageNo = headerPage->lastPage;
+        curDirtyFlag = false;
+        //page was just read in and hasn't been modified yet so curDirtyFlag = F.
+    }
+ 
+    // Call curPage->insertRecord to insert the record. If successful, remember to DO THE BOOKKEEPING. 
+    // That is, you have to update data fields such as recCnt, hdrDirtyFlag, curDirtyFlag, etc.
+    //insertion Status
+    status = curPage->insertRecord(rec, outRid);
+
+
+    //If can't insert into the current page, then create a new page, initialize it properly, 
+    //modify the header page content properly, link up the new page appropriately, make the 
+    //current page to be the newly allocated page, then try to insert the record. Don't forget 
+    //bookkeeping that must be done after successfully inserting the record.
+
+    //if no space to insert then you gotta make a new page
+    if (status == NOSPACE) {
+        //Allocates new page from the buffer pool.
+        status = bufMgr->allocPage(filePtr, newPageNo, newPage);
+        if (status != OK) {
+            return status;
+        }
+
+        newPage->init(newPageNo);
+        newPage->setNextPage(-1); //pointer to -1 = last page
+
+        Page* oldLastPage = curPage; 
+        //Sets the nextPage pointer of the prev last page to the page number of the new page
+        oldLastPage->setNextPage(newPageNo);
+        bufMgr->unPinPage(filePtr, curPageNo, true);
+        //This unpins the previous last page marking it to dirty.
+
+        //Bookkeeping
+        curPage = newPage;
+        curPageNo = newPageNo;
+        curDirtyFlag = false;
+
+        //insert the rec into the new page.
+        status = curPage->insertRecord(rec, outRid);
+        if (status != OK) {
+            bufMgr->unPinPage(filePtr, curPageNo, true);
+            return status;
+        }
+
+        //header page -> the new last page and increases page count.
+        headerPage->lastPage = newPageNo;
+        headerPage->pageCnt++;
+        hdrDirtyFlag = true;
+    }
+
+    //Successful insertion check
+    if (status == OK) {
+        headerPage->recCnt++;
+        hdrDirtyFlag = true;
+        curDirtyFlag = true;
+    }
+    return status;
 
   
   
