@@ -570,4 +570,17 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         curDirtyFlag = true;
     }
     return status;
+
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }
