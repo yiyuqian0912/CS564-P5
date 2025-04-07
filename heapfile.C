@@ -12,7 +12,6 @@ const Status createHeapFile(const string fileName)
     int			newPageNo;
     Page*		newPage;
 
-    // Try to open the file. This should return an error if it doesn't exist.
     status = db.openFile(fileName, file);
     if (status != OK)
     {
@@ -34,8 +33,7 @@ const Status createHeapFile(const string fileName)
         hdrPage->fileName[sizeof(hdrPage->fileName) - 1] = '\0';
         hdrPage->firstPage = -1;
         hdrPage->lastPage = -1;
-        hdrPage->pageCnt = 0; // Initially no data pages
-        hdrPage->recCnt = 0;  // Initially no records
+        hdrPage->recCnt = 0; 
 
         // Allocate the first data page.
         status = bufMgr->allocPage(file, newPageNo, newPage);
@@ -49,7 +47,7 @@ const Status createHeapFile(const string fileName)
         newPage->init(newPageNo);
         hdrPage->firstPage = newPageNo;
         hdrPage->lastPage = newPageNo;
-        hdrPage->pageCnt = 1; // Now there's one data page
+        hdrPage->pageCnt = 1;
 
         // Unpin pages and ensure they're marked as dirty.
         bufMgr->unPinPage(file, hdrPageNo, true);
@@ -68,42 +66,51 @@ const Status destroyHeapFile(const string fileName)
 	return (db.destroyFile (fileName));
 }
 
-// TODO
-// constructor opens the underlying file
+// Constructor for HeapFile: opens the specified file, and pins both
+// the header page and the first data page into the buffer pool.
 HeapFile::HeapFile(const string & fileName, Status& returnStatus)
 {
-    Status 	status;
-    Page*	pagePtr;
+    Status status;
+    Page* pagePtr;
 
     cout << "opening file " << fileName << endl;
 
-    // open the file and read in the header page and the first data page
     if ((status = db.openFile(fileName, filePtr)) == OK)
     {
-	status = filePtr->getFirstPage(headerPageNo);
-        
+        // Retrieve the page number of the file's header page.
+        status = filePtr->getFirstPage(headerPageNo);
+
+        // Read the header page into the buffer pool and get a pointer to it.
         status = bufMgr->readPage(filePtr, headerPageNo, pagePtr);
 
+        // Cast the raw page pointer to our file header structure.
         headerPage = reinterpret_cast<FileHdrPage*>(pagePtr);
         hdrDirtyFlag = false;
 
+        // Set curPageNo to the first actual data page (after the header).
         curPageNo = headerPage->firstPage;
 
+        // Read the first data page into the buffer pool.
         status = bufMgr->readPage(filePtr, curPageNo, pagePtr);
-    
-        curPage = pagePtr;
-        curDirtyFlag = false;
-        curRec = NULLRID;
 
-        returnStatus = OK;		
+        // Save a pointer to the current data page.
+        curPage = pagePtr;
+
+        // Mark the current data page as clean (no modifications yet).
+        curDirtyFlag = false;
+
+        curRec = NULLRID;
+        returnStatus = OK;
     }
     else
     {
-    	cerr << "open of heap file failed\n";
-		returnStatus = status;
-		return;
+        // Opening the file failed — set the error status and return.
+        cerr << "open of heap file failed\n";
+        returnStatus = status;
+        return;
     }
 }
+
 
 // the destructor closes the file
 HeapFile::~HeapFile()
