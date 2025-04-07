@@ -262,8 +262,9 @@ const Status HeapFileScan::resetScan()
 // TODO
 const Status HeapFileScan::scanNext(RID & outRid)
 {
-    Status status;
+    Status status = OK;
     RID nextRid;
+    RID tmpRid;
     int nextPageNo;
     Record rec;
 
