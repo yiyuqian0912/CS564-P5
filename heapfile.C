@@ -508,9 +508,9 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
     if (curPage == nullptr) {
         //headerPage->lastPage gives page number of last page
         //readPage Status
-        status = bufMgr->readPage(filePtr, headerPage->lastPage, curPage);
-        if (status != OK) {
-            return status;
+        Status readStatus = bufMgr->readPage(filePtr, headerPage->lastPage, curPage);
+        if (readStatus != OK) {
+            return readStatus;
         }
         curPageNo = headerPage->lastPage;
         curDirtyFlag = false;
@@ -520,7 +520,7 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
     // Call curPage->insertRecord to insert the record. If successful, remember to DO THE BOOKKEEPING. 
     // That is, you have to update data fields such as recCnt, hdrDirtyFlag, curDirtyFlag, etc.
     //insertion Status
-    status = curPage->insertRecord(rec, outRid);
+    Status insertStatus = curPage->insertRecord(rec, outRid);
 
 
     //If can't insert into the current page, then create a new page, initialize it properly, 
@@ -529,11 +529,11 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
     //bookkeeping that must be done after successfully inserting the record.
 
     //if no space to insert then you gotta make a new page
-    if (status == NOSPACE) {
+    if (insertStatus == NOSPACE) {
         //Allocates new page from the buffer pool.
-        status = bufMgr->allocPage(filePtr, newPageNo, newPage);
-        if (status != OK) {
-            return status;
+        Status allocateStatus = bufMgr->allocPage(filePtr, newPageNo, newPage);
+        if (allocateStatus != OK) {
+            return allocateStatus;
         }
 
         newPage->init(newPageNo);
@@ -551,10 +551,10 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
         curDirtyFlag = false;
 
         //insert the rec into the new page.
-        status = curPage->insertRecord(rec, outRid);
-        if (status != OK) {
+        Status insertStatus = curPage->insertRecord(rec, outRid);
+        if (insertStatus != OK) {
             bufMgr->unPinPage(filePtr, curPageNo, true);
-            return status;
+            return insertStatus;
         }
 
         //header page -> the new last page and increases page count.
@@ -564,23 +564,11 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
     }
 
     //Successful insertion check
-    if (status == OK) {
+    if (insertStatus == OK) {
+        //increment record count + 1
         headerPage->recCnt++;
         hdrDirtyFlag = true;
         curDirtyFlag = true;
     }
-    return status;
-
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
+    return insertStatus;
 }
