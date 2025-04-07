@@ -131,15 +131,21 @@ const int HeapFile::getRecCnt() const
 const Status HeapFile::getRecord(const RID & rid, Record & rec)
 {
     Status status;
-
-    // cout<< "getRecord. record (" << rid.pageNo << "." << rid.slotNo << ")" << endl;
-   
-   
-   
-   
-   
-   
-   
+    // If the required record is not on the current page, switch pages.
+    if (curPage == nullptr || curPageNo != rid.pageNo) {
+        // If there is a page currently pinned, unpin it.
+        if (curPage != nullptr) {
+            status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+            if (status != OK) return status;
+        }
+        // Read in the page that contains the desired record.
+        status = bufMgr->readPage(filePtr, rid.pageNo, curPage);
+        if (status != OK) return status;
+        curPageNo = rid.pageNo;
+        curDirtyFlag = false; // newly read page is clean.
+    }
+    // Get the record from the currently pinned page.
+    return curPage->getRecord(rid, rec);
 }
 
 // TODO
@@ -231,25 +237,77 @@ const Status HeapFileScan::resetScan()
 }
 
 // TODO
-const Status HeapFileScan::scanNext(RID& outRid)
+const Status HeapFileScan::scanNext(RID & outRid)
 {
-    Status 	status = OK;
-    RID		nextRid;
-    RID		tmpRid;
-    int 	nextPageNo;
-    Record      rec;
+    Status status = OK;
+    RID nextRid;
+    RID tmpRid;
+    int nextPageNo;
+    Record rec;
 
-    
-	
-	
-	
-	
-	
-	
-	
-	
-	
+    // If no page is currently pinned, the scan is finished.
+    if (curPage == nullptr)
+        return status;  // DONE indicates that there are no more records to scan
+
+    // Loop until we either find a matching record or exhaust the file.
+    while (true) {
+        // If no record has yet been processed on this page, start with the first record.
+        if (curRec.pageNo == NULLRID.pageNo && curRec.slotNo == NULLRID.slotNo)
+            status = curPage->firstRecord(nextRid);
+        else
+            status = curPage->nextRecord(curRec, nextRid);
+
+        // If a candidate record was found on the current page...
+        if (status == OK) {
+            status = curPage->getRecord(nextRid, rec);
+            if (status != OK)
+                return status;
+            // Use a temporary RID for clarity.
+            tmpRid = nextRid;
+            // If no filter is applied or the record matches the predicate, return it.
+            if (matchRec(rec)) {
+                curRec = tmpRid;
+                outRid = curRec;
+                return OK;
+            }
+            // Otherwise, update curRec and continue scanning on the current page.
+            curRec = tmpRid;
+            continue;
+        }
+        // If we've reached the end of the records on this page...
+        else if (status == ENDOFPAGE || status == NORECORDS) {
+            // Get the next page number.
+            status = curPage->getNextPage(nextPageNo);
+            if (status != OK)
+                return status;
+            // Unpin the current page.
+            status = bufMgr->unPinPage(filePtr, curPageNo, curDirtyFlag);
+            if (status != OK)
+                return status;
+            // If there is no next page, the scan is finished.
+            if (nextPageNo == -1) {
+                curPage = nullptr;
+                curPageNo = 0;
+                curDirtyFlag = false;
+                return status;
+            }
+            // Otherwise, read in the next page.
+            curPageNo = nextPageNo;
+            status = bufMgr->readPage(filePtr, curPageNo, curPage);
+            if (status != OK)
+                return status;
+            curDirtyFlag = false;  // Newly read page is initially clean.
+            curRec = NULLRID;      // Reset the record pointer for the new page.
+            // Continue the loop to search on the new page.
+            continue;
+        }
+        else {
+            // Return any other error encountered.
+            return status;
+        }
+    }
 }
+
 
 
 // returns pointer to the current record.  page is left pinned
