@@ -12,30 +12,52 @@ const Status createHeapFile(const string fileName)
     int			newPageNo;
     Page*		newPage;
 
-    // try to open the file. This should return an error
+    // Try to open the file. This should return an error if it doesn't exist.
     status = db.openFile(fileName, file);
     if (status != OK)
     {
+        // Create the file if it doesn't exist.
         status = db.createFile(fileName);
+        if (status != OK) return status;
+
+        // Open the newly created file.
         status = db.openFile(fileName, file);
+        if (status != OK) return status;
+
+        // Allocate the header page.
         status = bufMgr->allocPage(file, hdrPageNo, newPage);
+        if (status != OK) return status;
         hdrPage = reinterpret_cast<FileHdrPage*>(newPage);
+
+        // Initialize header page fields.
         strncpy(hdrPage->fileName, fileName.c_str(), sizeof(hdrPage->fileName));
-        hdrPage->fileName[sizeof(hdrPage->fileName) - 1] = '\0'; 
-        hdrPage->firstPage = -1;     
+        hdrPage->fileName[sizeof(hdrPage->fileName) - 1] = '\0';
+        hdrPage->firstPage = -1;
         hdrPage->lastPage = -1;
+        hdrPage->pageCnt = 0; // Initially no data pages
+        hdrPage->recCnt = 0;  // Initially no records
 
+        // Allocate the first data page.
         status = bufMgr->allocPage(file, newPageNo, newPage);
+        if (status != OK) {
+            // Cleanup header page if data page allocation fails.
+            bufMgr->unPinPage(file, hdrPageNo, true);
+            return status;
+        }
 
+        // Initialize the first data page.
         newPage->init(newPageNo);
-
         hdrPage->firstPage = newPageNo;
         hdrPage->lastPage = newPageNo;
+        hdrPage->pageCnt = 1; // Now there's one data page
 
-        bufMgr->unPinPage(file, hdrPageNo, true);    
-        bufMgr->unPinPage(file, newPageNo, true);  
+        // Unpin pages and ensure they're marked as dirty.
+        bufMgr->unPinPage(file, hdrPageNo, true);
+        bufMgr->unPinPage(file, newPageNo, true);
 
-        return OK;  
+        // Close the file to ensure changes are flushed.
+        status = db.closeFile(file);
+        return status;
     }
     return (FILEEXISTS);
 }
@@ -240,9 +262,8 @@ const Status HeapFileScan::resetScan()
 // TODO
 const Status HeapFileScan::scanNext(RID & outRid)
 {
-    Status status = OK;
+    Status status;
     RID nextRid;
-    RID tmpRid;
     int nextPageNo;
     Record rec;
 
@@ -349,6 +370,8 @@ const Status HeapFileScan::scanNext(RID & outRid)
     // Should never reach here
     return FILEEOF;
 }
+
+
 // returns pointer to the current record.  page is left pinned
 // and the scan logic is required to unpin the page 
 
@@ -553,5 +576,3 @@ const Status InsertFileScan::insertRecord(const Record & rec, RID& outRid)
   
   
 }
-
-
